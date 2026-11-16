@@ -851,9 +851,9 @@ describe('Download Engine Resilience & Transfer Verification', () => {
 
       const job = await engine.enqueue('course-mal', 'lesson-mal', 'default', 'Course Mal', 'Lesson Mal');
 
-      // Wait for engine to exhaust bounded retries (maxRetries = 3)
+      // Allow time for the three seconds of retry backoff and the HTTP requests.
       let attempts = 0;
-      while (attempts++ < 30) {
+      while (attempts++ < 60) {
         const cur = storage.getDownload(job.id);
         if (cur?.status === 'failed') break;
         await new Promise((r) => setTimeout(r, 100));
