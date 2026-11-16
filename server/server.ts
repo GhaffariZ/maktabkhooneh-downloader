@@ -8,6 +8,7 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import { once } from 'node:events';
 import { StorageManager } from './storage/storage-manager.js';
 import { MaktabkhoonehClient } from './platform/client.js';
 import { DownloadEngine } from './downloader/download-engine.js';
@@ -41,6 +42,7 @@ export interface ServerOptions {
   allowLocalTest?: boolean;
   isDemo?: boolean;
   isDev?: boolean;
+  mobileAccessToken?: string;
 }
 
 export class AppServer {
@@ -55,13 +57,21 @@ export class AppServer {
   private isDemo: boolean;
   private isDev: boolean;
   private csrfToken: string;
+  private mobileAccessToken?: Buffer;
+  private ready = false;
 
   constructor(options: ServerOptions = {}) {
+    if (options.mobileAccessToken !== undefined) {
+      if (!/^[a-f0-9]{64}$/u.test(options.mobileAccessToken)) {
+        throw new Error('Invalid mobile access token');
+      }
+      this.mobileAccessToken = Buffer.from(options.mobileAccessToken, 'hex');
+    }
     // Port 0 is allowed for dynamic test allocation
     this.port = options.port ?? (process.env.PORT ? parseInt(process.env.PORT, 10) : 3210);
     this.host = '127.0.0.1'; // Only loopback host is accepted
     this.allowLocalTest = !!options.allowLocalTest;
-    this.isDev = !!options.isDev || process.env.NODE_ENV === 'development';
+    this.isDev = !this.mobileAccessToken && (!!options.isDev || process.env.NODE_ENV === 'development');
 
     // Demo must be explicit (--demo / MK_DEMO=1)
     this.isDemo = options.isDemo ?? (process.env.MK_DEMO === '1' || process.env.MK_DEMO === 'true');
@@ -87,7 +97,13 @@ export class AppServer {
       allowLocalTest: this.allowLocalTest,
     });
 
-    this.server = http.createServer((req, res) => this.handleRequest(req, res));
+    this.server = http.createServer((req, res) => {
+      if (!this.ready) {
+        res.writeHead(503).end();
+        return;
+      }
+      void this.handleRequest(req, res);
+    });
   }
 
   public getStorage(): StorageManager {
@@ -107,29 +123,31 @@ export class AppServer {
   }
 
   public async start(): Promise<{ port: number; host: string }> {
-    await this.storage.init();
+    // Reserve the port before loading or recovering the download queue.
+    this.server.listen(this.port, this.host);
+    await once(this.server, 'listening');
+    const address = this.server.address();
+    if (address && typeof address !== 'string') this.port = address.port;
 
-    if (this.isDemo) {
-      const demoDlDir = path.join(this.storage.getDataDir(), 'downloads');
-      await fs.promises.mkdir(demoDlDir, { recursive: true });
-      await this.storage.updateSettings({ downloadDirectory: demoDlDir });
+    try {
+      await this.storage.init();
+
+      if (this.isDemo || this.mobileAccessToken) {
+        const downloads = path.join(this.storage.getDataDir(), 'downloads');
+        await this.storage.updateSettings({ downloadDirectory: downloads });
+      }
+
+      this.downloadEngine.triggerWorker();
+      this.ready = true;
+      return { port: this.port, host: this.host };
+    } catch (error) {
+      await new Promise<void>((resolve) => this.server.close(() => resolve()));
+      throw error;
     }
-
-    this.downloadEngine.triggerWorker();
-
-    return new Promise((resolve, reject) => {
-      this.server.listen(this.port, this.host, () => {
-        const addr = this.server.address();
-        if (typeof addr === 'object' && addr) {
-          this.port = addr.port;
-        }
-        resolve({ port: this.port, host: this.host });
-      });
-      this.server.on('error', reject);
-    });
   }
 
   public async stop(): Promise<void> {
+    this.ready = false;
     await this.downloadEngine.shutdown();
 
     return new Promise((resolve, reject) => {
@@ -176,6 +194,7 @@ export class AppServer {
       }
 
       const method = (req.method || 'GET').toUpperCase();
+      if (this.mobileAccessToken && !this.authorizeMobileRequest(req, res, this.mobileAccessToken, method)) return;
 
       // Dev-only CORS preflight support for Vite dev server (port 5173)
       if (this.isDev) {
@@ -255,6 +274,33 @@ export class AppServer {
         res.end(JSON.stringify({ error: { code: 'INTERNAL_SERVER_ERROR', message: err.message || 'Unknown server error' } }));
       }
     }
+  }
+
+  private authorizeMobileRequest(req: http.IncomingMessage, res: http.ServerResponse, token: Buffer, method: string): boolean {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https: data:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'");
+    const bootstrap = req.url === '/__mobile/start';
+    const candidate = bootstrap
+      ? req.headers['x-mk-mobile-token']
+      : req.headers.cookie?.split(';').map((cookie) => cookie.trim())
+        .find((cookie) => cookie.startsWith('mk_mobile='))?.slice('mk_mobile='.length);
+    const authorized = typeof candidate === 'string' && /^[a-f0-9]{64}$/u.test(candidate) &&
+      crypto.timingSafeEqual(Buffer.from(candidate, 'hex'), token);
+
+    if (!authorized || (bootstrap && method !== 'GET')) {
+      this.sendError(res, 403, 'MOBILE_ACCESS_REQUIRED', 'Mobile app access is required');
+      return false;
+    }
+
+    if (bootstrap) {
+      res.writeHead(303, {
+        Location: '/',
+        'Set-Cookie': `mk_mobile=${token.toString('hex')}; Path=/; HttpOnly; SameSite=Strict`,
+      }).end();
+      return false;
+    }
+
+    return true;
   }
 
   /**
@@ -842,12 +888,16 @@ export class AppServer {
     // GET /api/settings -> { downloadDirectory: string }
     if (pathname === '/api/settings' && method === 'GET') {
       const settings = this.storage.getSettings();
-      this.sendJson(res, 200, settings);
+      this.sendJson(res, 200, this.mobileAccessToken ? { ...settings, downloadDirectoryManaged: true } : settings);
       return;
     }
 
     // PUT /api/settings body { downloadDirectory: string }
     if (pathname === '/api/settings' && method === 'PUT') {
+      if (this.mobileAccessToken) {
+        this.sendError(res, 403, 'MANAGED_DOWNLOAD_DIRECTORY', 'دانلودها در حافظه داخلی برنامه ذخیره می‌شوند.');
+        return;
+      }
       const body = await this.parseJsonBody(req, res);
       if (!body) return;
 

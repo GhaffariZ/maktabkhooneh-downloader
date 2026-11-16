@@ -111,6 +111,7 @@ export interface DownloadResponse {
 
 export interface Settings {
   downloadDirectory: string;
+  downloadDirectoryManaged?: boolean;
 }
 
 export interface UpdateSettingsPayload {

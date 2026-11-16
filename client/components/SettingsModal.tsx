@@ -58,13 +58,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     setError(null);
 
     const trimmedDir = directory.trim();
-    if (!trimmedDir) {
+    if (!settings.downloadDirectoryManaged && !trimmedDir) {
       setError('مسیر پوشه ذخیره‌سازی نمی‌تواند خالی باشد');
       return;
     }
 
     // Save validated changed directory first, then onUpdatePreferences and close
-    const directoryChanged = trimmedDir !== settings.downloadDirectory;
+    const directoryChanged = !settings.downloadDirectoryManaged && trimmedDir !== settings.downloadDirectory;
 
     if (directoryChanged) {
       setLoading(true);
@@ -216,6 +216,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <span>پوشه ذخیره‌سازی آفلاین</span>
             </div>
 
+            {settings.downloadDirectoryManaged ? (
+              <p className="settings-label">دانلودها در حافظه داخلی برنامه ذخیره می‌شوند.</p>
+            ) : (
             <div>
               <label
                 htmlFor="settings-download-directory"
@@ -241,6 +244,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 تغییر این مسیر تنها بر دانلودهای جدید اعمال می‌شود و داده‌های قبلی حفظ می‌گردند.
               </p>
             </div>
+            )}
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 'var(--space-2)', marginTop: 'var(--space-2)' }}>

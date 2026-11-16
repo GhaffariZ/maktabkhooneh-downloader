@@ -1,0 +1,89 @@
+name: Mobile previews
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mobile-preview]
+  pull_request:
+    paths:
+      - '.github/workflows/mobile.yml'
+      - 'mobile/**'
+      - 'client/**'
+      - 'server/**'
+      - 'shared/**'
+      - 'scripts/mobile.mjs'
+      - 'scripts/prepare-mobile.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: android
+            runner: ubuntu-latest
+          - platform: ios
+            runner: macos-latest
+    name: ${{ matrix.platform }} preview
+    runs-on: ${{ matrix.runner }}
+    env:
+      PLATFORM: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.x
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - name: Stage the verified runtime and web assets
+        shell: bash
+        run: |
+          url="$(node -p 'require("./mobile/runtime.json")[process.env.PLATFORM].url')"
+          license="$(node -p 'require("./mobile/runtime.json").license.url')"
+          curl --fail --location --retry 3 "$url" -o "$RUNNER_TEMP/runtime.zip"
+          curl --fail --location --retry 3 "$license" -o "$RUNNER_TEMP/Node-LICENSE.txt"
+          node scripts/prepare-mobile.mjs "$PLATFORM" "$RUNNER_TEMP/runtime.zip" "$RUNNER_TEMP/Node-LICENSE.txt"
+
+      - uses: actions/setup-java@v4
+        if: matrix.platform == 'android'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        if: matrix.platform == 'android'
+        with:
+          gradle-version: '8.13'
+      - name: Build Android debug APK
+        if: matrix.platform == 'android'
+        run: |
+          sdkmanager 'platforms;android-36' 'ndk;28.2.13676358' 'cmake;3.22.1'
+          gradle -p mobile/android :app:assembleDebug
+      - name: Upload Android debug APK
+        if: matrix.platform == 'android'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: mobile/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Build iPhone simulator app
+        if: matrix.platform == 'ios'
+        run: |
+          brew install xcodegen
+          cd mobile/ios
+          xcodegen generate
+          xcodebuild -project StudyLibrary.xcodeproj -scheme StudyLibrary -configuration Debug -sdk iphonesimulator -arch arm64 -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+          ditto -c -k --keepParent build/Build/Products/Debug-iphonesimulator/StudyLibrary.app "$RUNNER_TEMP/ios-simulator.zip"
+      - name: Upload iPhone simulator app
+        if: matrix.platform == 'ios'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-preview
+          path: ${{ runner.temp }}/ios-simulator.zip
+          if-no-files-found: error

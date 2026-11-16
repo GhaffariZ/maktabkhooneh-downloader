@@ -7,6 +7,12 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+/mobile/generated/
+/mobile/android/.gradle/
+/mobile/android/app/.cxx/
+/mobile/android/local.properties
+/mobile/ios/*.xcodeproj/
+/mobile/ios/Info.plist
 
 # Logs & debugging
 logs/

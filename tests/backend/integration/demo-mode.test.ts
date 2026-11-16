@@ -128,4 +128,26 @@ describe('Explicit Demo Mode & Isolation', () => {
     const importJson = await importRes.json();
     assert.ok(importJson.course);
   });
+
+  test('a second launch on an occupied port leaves active download state intact', async () => {
+    await demoServer.getStorage().saveDownload({
+      id: 'active-demo-test',
+      courseId: 'demo-python',
+      lessonId: 'demo-unit-101',
+      courseTitle: 'Synthetic course',
+      lessonTitle: 'Synthetic lesson',
+      quality: 'demo-720p',
+      status: 'downloading',
+      downloadedBytes: 12,
+    });
+    const stateFile = path.join(tmpDemoDataDir, 'demo', 'app-state.json');
+    const before = await fs.promises.readFile(stateFile, 'utf8');
+    const duplicate = new AppServer({
+      port: demoServer.getPort(),
+      dataDir: tmpDemoDataDir,
+      isDemo: true,
+    });
+    await assert.rejects(duplicate.start(), { code: 'EADDRINUSE' });
+    assert.equal(await fs.promises.readFile(stateFile, 'utf8'), before);
+  });
 });

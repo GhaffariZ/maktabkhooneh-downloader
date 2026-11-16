@@ -6,10 +6,12 @@
 
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'node:url';
 import { Course, Chapter, Quality } from '../../shared/types.js';
 
 export function getDemoSamplePath(): string {
   const candidates = [
+    fileURLToPath(new URL('./sample.mp4', import.meta.url)),
     path.resolve(process.cwd(), 'server/demo/sample.mp4'),
     path.resolve(process.cwd(), 'dist/server/demo/sample.mp4'),
     path.resolve(process.cwd(), 'dist/server/server/demo/sample.mp4'),
@@ -17,11 +19,6 @@ export function getDemoSamplePath(): string {
   for (const c of candidates) {
     if (fs.existsSync(c)) return c;
   }
-  try {
-    const metaDir = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
-    const candidate = path.join(metaDir, 'sample.mp4');
-    if (fs.existsSync(candidate)) return candidate;
-  } catch {}
   return candidates[0];
 }
 
