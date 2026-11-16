@@ -1,6 +1,6 @@
 {
   "name": "maktabkhooneh-study-library",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "Persian-first local study library for Maktabkhooneh courses, with streaming, selective downloads, and progress tracking",
@@ -16,7 +16,7 @@
     "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.client.json --noEmit",
     "build": "npm run build:server && npm run build:client",
     "build:server": "tsc -p tsconfig.server.json && node scripts/copy-assets.mjs",
-    "build:client": "vite build",
+    "build:client": "vite build && node scripts/copy-licenses.mjs",
     "test": "node --import tsx --test tests/backend/**/*.test.ts tests/frontend/**/*.test.ts",
     "test:backend": "node --import tsx --test tests/backend/**/*.test.ts",
     "test:frontend": "node --import tsx --test tests/frontend/**/*.test.ts"

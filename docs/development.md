@@ -36,3 +36,14 @@ npm run build
 ```
 
 GitHub Actions runs these checks on Windows, macOS, and Linux with Node.js 22. `npm run build` writes the bundled client and compiled server under `dist/`. GitHub release archives contain the tagged source. Build and run them with the same npm commands.
+
+## Desktop previews
+
+After `npm run build`, run the commands below from PowerShell. Use an extracted official Windows x64 Node distribution that includes `node.exe` and `LICENSE`. The package script uses the local .NET Framework C# compiler and creates the ZIP under the output directory. GitHub Actions builds and smoke-tests the Windows package on its Windows runner.
+
+```powershell
+./scripts/package-windows.ps1 -NodeRuntimeDirectory 'C:\path\to\node-win-x64' -OutputDirectory './build/desktop-preview'
+node scripts/smoke-desktop.mjs './build/desktop-preview/Maktabkhooneh-Study-Library-v1.1.0-win-x64-preview'
+```
+
+On Linux or macOS, use `sh scripts/package-unix.sh /path/to/extracted-node ./build/desktop-preview`. The runtime directory must include `bin/node` and `LICENSE` for your platform and architecture. Linux produces a Debian package. macOS produces a ZIP containing an unsigned `.app`. The CI packaging steps extract the resulting artifacts and exercise the bundled runtime. [Desktop preview instructions](desktop-preview.md)

@@ -13,7 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, windows-latest, macos-15]
         node-version: [22.x]
 
     steps:
@@ -37,6 +37,61 @@ jobs:
 
       - name: Build production bundles (server and client)
         run: npm run build
+
+      - name: Build and smoke-test the Windows desktop preview
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:RUNNER_TEMP 'desktop-preview'
+          $runtime = Split-Path -Parent (Get-Command node.exe).Source
+          ./scripts/package-windows.ps1 -NodeRuntimeDirectory $runtime -OutputDirectory $output
+          $archive = Get-ChildItem -LiteralPath $output -Filter '*.zip' | Select-Object -First 1
+          $extracted = Join-Path $output 'extracted'
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $extracted
+          node scripts/smoke-desktop.mjs $extracted
+
+      - name: Upload Windows desktop preview
+        if: matrix.os == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-desktop-preview
+          path: ${{ runner.temp }}/desktop-preview/*.zip
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Build and smoke-test the Linux desktop preview
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          output="$RUNNER_TEMP/desktop-preview"
+          runtime="$(dirname "$(dirname "$(command -v node)")")"
+          sh scripts/package-unix.sh "$runtime" "$output"
+          dpkg-deb -x "$output"/*.deb "$output/extracted"
+          node scripts/smoke-desktop.mjs "$output/extracted/usr/lib/maktabkhooneh-study-library"
+
+      - name: Build and smoke-test the macOS desktop preview
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          output="$RUNNER_TEMP/desktop-preview"
+          runtime="$(dirname "$(dirname "$(command -v node)")")"
+          sh scripts/package-unix.sh "$runtime" "$output"
+          ditto -x -k "$output"/*.zip "$output/extracted"
+          bundle="$output/extracted/Maktabkhooneh Study Library.app/Contents"
+          plutil -lint "$bundle/Info.plist"
+          test -x "$bundle/MacOS/launch"
+          node scripts/smoke-desktop.mjs "$bundle/Resources"
+
+      - name: Upload Linux or macOS desktop preview
+        if: matrix.os != 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ runner.os }}-desktop-preview
+          path: |
+            ${{ runner.temp }}/desktop-preview/*.deb
+            ${{ runner.temp }}/desktop-preview/*.zip
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Package production build artifact
         if: matrix.os == 'ubuntu-latest'

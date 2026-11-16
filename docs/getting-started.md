@@ -2,6 +2,10 @@
 
 ## نصب و اجرا
 
+برای اجرای آماده، [نسخه‌ی مناسب دستگاهتان](https://github.com/GhaffariZ/maktabkhooneh-downloader/releases/latest) را دانلود کنید و [راهنمای بسته‌های دسکتاپ](desktop-preview.md) یا [راهنمای موبایل](mobile.md) را ببینید.
+
+### اجرا از کد منبع
+
 ۱. ‏Node.js نسخه‌ی ۲۲ یا بالاتر را روی Windows، macOS یا Linux نصب کنید.
 
 ۲. از [صفحه‌ی نسخه‌ها](https://github.com/GhaffariZ/maktabkhooneh-downloader/releases) فایل **Source code** را دانلود و استخراج کنید. ترمینال را در پوشه‌ای باز کنید که `package.json` در آن قرار دارد.

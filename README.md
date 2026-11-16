@@ -12,7 +12,18 @@
 
 ## شروع سریع
 
-در Windows، macOS یا Linux به **Node.js 22 یا بالاتر** نیاز دارید. فایل Source code را از صفحه‌ی نسخه دانلود و استخراج کنید. سپس از داخل پوشه‌ی آن اجرا کنید.
+بسته‌ی مناسب دستگاهتان را از [صفحه‌ی دانلود](https://github.com/GhaffariZ/maktabkhooneh-downloader/releases/latest) بگیرید. نسخه‌های دسکتاپ و APK اندروید محیط اجرا را همراه خود دارند.
+
+- **ویندوز x64:** فایل ZIP را استخراج کنید و برنامه را باز کنید.
+- **اوبونتو و دبیان x64:** فایل `.deb` را با نصب‌کننده‌ی بسته‌ی سیستم باز کنید.
+- **مک با تراشه‌ی اپل:** بسته‌ی پیش‌نمایش macOS را بگیرید. این نسخه امضا نشده است.
+- **اندروید ARM64:** فایل APK آزمایشی را روی گوشی باز کنید.
+
+[راهنمای اجرای دسکتاپ](docs/desktop-preview.md) · [راهنمای نسخه‌های موبایل](docs/mobile.md) · [راهنمای استفاده](docs/getting-started.md)
+
+### ساخت از کد منبع
+
+با **Node.js 22 یا بالاتر**، از داخل پوشه‌ی کد منبع اجرا کنید.
 
 ```sh
 npm ci
@@ -24,7 +35,7 @@ npm start
 
 ## English
 
-Maktabkhooneh Study Library is a local, Persian-first dashboard for courses you can access. Browse lessons, stream them, save individual videos for offline study, and resume from your last position. Download the latest source release, then run the commands above using Node.js 22 or later. [Releases](https://github.com/GhaffariZ/maktabkhooneh-downloader/releases) · [Development guide](docs/development.md)
+Maktabkhooneh Study Library is a local, Persian-first dashboard for courses you can access. Browse lessons, stream them, save individual videos for offline study, and resume from your last position. Download a desktop package or the Android APK from the latest release. The iOS preview is a simulator build. [Releases](https://github.com/GhaffariZ/maktabkhooneh-downloader/releases) · [Development guide](docs/development.md)
 
 ## Credits and license
 
