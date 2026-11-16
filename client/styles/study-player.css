@@ -1,0 +1,337 @@
+/* ==========================================================================
+   Study Player & Focused Learning Styles (Agent D)
+   ========================================================================== */
+
+/* LTR timeline and controls for video player */
+.video-wrapper,
+.native-video-player,
+.study-video-skin {
+  direction: ltr !important;
+}
+
+/* Scoped Video.js 10 Neutral Skin integration */
+.study-video-skin {
+  width: 100% !important;
+  height: 100% !important;
+  --media-accent-color: var(--color-accent);
+  --media-accent-text-color: var(--color-accent-contrast);
+  --media-border-radius: var(--radius-lg);
+  --media-font-family: var(--font-sans);
+  --media-scale-unit: 1rem;
+  --media-border-color: transparent;
+  --media-controls-before-start: visible;
+}
+
+.study-video-skin :focus-visible {
+  outline: 2px solid var(--color-accent) !important;
+  outline-offset: 2px !important;
+}
+
+/* ==========================================================================
+   Study Player Tools Bar (.study-player-tools)
+   ========================================================================== */
+.study-player-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.study-tools-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.study-tools-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.current-lesson-label {
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+
+.btn-exit-focus {
+  background-color: var(--color-accent-subtle) !important;
+  color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+  font-weight: 600;
+}
+
+/* Keyboard Shortcuts Helper Panel */
+.study-shortcuts-hint {
+  background-color: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.shortcuts-grid kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.1);
+  color: var(--color-text-primary);
+  margin: 0 2px;
+}
+
+/* ==========================================================================
+   Focused Study View (Focus Mode)
+   Hides actual sidebar (.app-sidebar), topbars, banners, and outline
+   ========================================================================== */
+body.study-focus-active .app-sidebar,
+body.study-focus-active .app-navbar,
+body.study-focus-active .page-topbar,
+body.study-focus-active .course-outline-panel,
+body.study-focus-active .demo-banner {
+  display: none !important;
+}
+
+body.study-focus-active .app-main {
+  width: 100% !important;
+  max-width: 100% !important;
+  padding: var(--space-4) !important;
+}
+
+body.study-focus-active .course-detail-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-4);
+  width: 100%;
+}
+
+body.study-focus-active .course-detail-layout {
+  display: flex !important;
+  flex-direction: column !important;
+  max-width: 1080px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+body.study-focus-active .course-main-column,
+body.study-focus-active .player-panel {
+  width: 100%;
+}
+
+body.study-focus-active .video-wrapper {
+  max-height: 80vh;
+}
+
+/* ==========================================================================
+   Course Completion Summary & Outline Controls
+   ========================================================================== */
+.course-progress-summary {
+  background-color: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.course-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+}
+
+.course-progress-title {
+  font-weight: 700;
+  color: var(--color-text-primary);
+}
+
+.course-progress-stat {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+/* Outline Search & Filters */
+.outline-filter-bar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.lesson-search-box {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.lesson-search-input {
+  width: 100%;
+  padding: 6px 30px 6px 26px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background-color: var(--color-surface);
+  color: var(--color-text-primary);
+  font-size: 0.82rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.lesson-search-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-subtle);
+}
+
+.lesson-search-box .search-icon {
+  position: absolute;
+  right: 8px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}
+
+.lesson-search-box .search-clear-btn {
+  position: absolute;
+  left: 6px;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+}
+
+.lesson-search-box .search-clear-btn:hover {
+  color: var(--color-text-primary);
+}
+
+.filter-pill-group {
+  display: flex;
+  gap: var(--space-1);
+  background-color: var(--color-surface-subtle);
+  padding: 2px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.filter-pill {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+  font-family: inherit;
+}
+
+.filter-pill:hover {
+  color: var(--color-text-primary);
+}
+
+.filter-pill.active {
+  background-color: var(--color-surface);
+  color: var(--color-accent);
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Manual Watched Toggle Button */
+.btn-toggle-watched {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  background-color: var(--color-surface);
+  color: var(--color-text-muted);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.btn-toggle-watched:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background-color: var(--color-accent-subtle);
+}
+
+.btn-toggle-watched.is-completed {
+  border-color: var(--color-success);
+  color: var(--color-success);
+  background-color: var(--color-success-subtle);
+}
+
+/* Distinct Badges for Watched & Resumable */
+.badge-watched {
+  background-color: var(--color-success-subtle);
+  color: var(--color-success);
+}
+
+.badge-resumable {
+  background-color: var(--color-accent-subtle);
+  color: var(--color-accent);
+}
+
+.outline-empty-state {
+  padding: var(--space-6) var(--space-4);
+  text-align: center;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  background-color: var(--color-surface-subtle);
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--color-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* ==========================================================================
+   Reduced Motion Accessibility
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
