@@ -26,7 +26,7 @@ jobs:
           - platform: android
             runner: ubuntu-latest
           - platform: ios
-            runner: macos-latest
+            runner: macos-15
     name: ${{ matrix.platform }} preview
     runs-on: ${{ matrix.runner }}
     env:
