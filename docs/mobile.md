@@ -4,7 +4,7 @@ The Android and iPhone shells use the same Persian dashboard as desktop. Each sh
 
 ## Build previews
 
-The **Mobile previews** GitHub Actions workflow stages the reproducible binaries and creates an Android debug APK and an Apple Silicon iPhone simulator app. The simulator app is for build verification. Distributing an app to iPhones requires a signed device build and an Apple distribution path such as TestFlight.
+The **Mobile previews** GitHub Actions workflow stages the pinned runtimes and builds separate Android ARM64 phone and x86-64 emulator APKs alongside an Apple Silicon iPhone simulator app. Install the ARM64 APK on a compatible Android phone. Installing on an iPhone requires a signed device build distributed through a route such as TestFlight.
 
 Use `npm ci` then `npm run build` to build the shared UI and server. The runtime archive URLs and SHA-256 values are in [`mobile/runtime.json`](../mobile/runtime.json). Download that platform's archive and the Node license, then run the matching commands below.
 
