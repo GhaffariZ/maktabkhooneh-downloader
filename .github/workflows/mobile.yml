@@ -62,7 +62,10 @@ jobs:
       - name: Build Android debug APK
         if: matrix.platform == 'android'
         run: |
-          sdkmanager 'platforms;android-36' 'ndk;28.2.13676358' 'cmake;3.22.1'
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          manager="$(find "$sdk/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          test -x "$manager"
+          "$manager" --sdk_root="$sdk" 'platforms;android-36' 'ndk;28.2.13676358' 'cmake;3.22.1'
           gradle -p mobile/android :app:assembleDebug
       - name: Upload Android debug APK
         if: matrix.platform == 'android'
