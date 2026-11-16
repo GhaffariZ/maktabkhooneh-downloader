@@ -13,9 +13,9 @@ android {
         targetSdk 36
         versionCode 1
         versionName '1.0.0'
-        ndk { abiFilters 'arm64-v8a', 'x86_64' }
         externalNativeBuild {
             cmake {
+                abiFilters 'arm64-v8a', 'x86_64'
                 arguments '-DANDROID_STL=c++_shared',
                     "-DMK_RUNTIME_DIR=${rootProject.file('../generated/android/runtime').absolutePath.replace('\\', '/')}"
             }
