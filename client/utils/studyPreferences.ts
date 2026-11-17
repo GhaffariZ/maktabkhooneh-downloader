@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type DensityPreference = 'comfortable' | 'compact';
-export type QualityPreference = 'ask' | 'low' | 'high';
+export type QualityPreference = 'auto' | 'low' | 'high';
 
 export interface StudyPreferences {
   theme: ThemePreference;
@@ -31,7 +31,7 @@ export function getStoredPreferences(): StudyPreferences {
         const preferredQuality: QualityPreference =
           parsed.preferredQuality === 'low' || parsed.preferredQuality === 'high'
             ? parsed.preferredQuality
-            : 'ask';
+            : 'auto';
         const playbackRate =
           typeof parsed.playbackRate === 'number' && SPEED_OPTIONS.includes(parsed.playbackRate)
             ? parsed.playbackRate
@@ -56,7 +56,7 @@ export function getStoredPreferences(): StudyPreferences {
   return {
     theme: initialTheme,
     density: 'comfortable',
-    preferredQuality: 'ask',
+    preferredQuality: 'auto',
     playbackRate: 1,
   };
 }

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Download, Pause, Play, X, HardDrive, Loader2 } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Download, Pause, Play, X, HardDrive, Loader2, CheckCircle2, Database, Clock } from 'lucide-react';
 import type { Download as DownloadItem } from '@shared/types';
 import { formatBytes, formatQualityLabel, getDownloadStatusLabel } from '../utils/format';
 
@@ -20,32 +20,100 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
   onCancel,
   onPlayOffline,
 }) => {
+  const [query, setQuery] = useState('');
+  const [status, setStatus] = useState('all');
+  const visibleDownloads = downloads.filter(item =>
+    (status === 'all' || item.status === status) &&
+    (item.courseTitle + ' ' + item.lessonTitle).toLocaleLowerCase('fa').includes(query.trim().toLocaleLowerCase('fa'))
+  );
+  const { totalCount, downloadingCount, completedCount, totalDownloadedBytes } = useMemo(() => {
+    let dl = 0;
+    let comp = 0;
+    let bytes = 0;
+    for (const item of downloads) {
+      if (item.status === 'downloading') dl++;
+      if (item.status === 'completed') comp++;
+      bytes += item.downloadedBytes || 0;
+    }
+    return {
+      totalCount: downloads.length,
+      downloadingCount: dl,
+      completedCount: comp,
+      totalDownloadedBytes: bytes,
+    };
+  }, [downloads]);
+
   return (
     <div className="downloads-panel">
+      {/* Topbar */}
       <div className="page-topbar">
         <div>
-          <h1 style={{ fontSize: '1.4rem', marginBottom: 'var(--space-1)' }}>دانلودها و پخش آفلاین</h1>
-          <p style={{ fontSize: '0.88rem' }}>
+          <h1 className="page-title">دانلودها و پخش آفلاین</h1>
+          <p className="page-subtitle">
             مدیریت صف دریافت درس‌ها و دسترسی به ویدیوهای ذخیره‌شده در حافظه دستگاه
           </p>
         </div>
       </div>
 
+      {/* Metrics Overview Strip */}
+      {downloads.length > 0 && (
+        <div className="downloads-metrics-grid">
+          <div className="metric-card">
+            <div className="metric-header">
+              <Download size={15} aria-hidden="true" />
+              <span>کل صف دانلود</span>
+            </div>
+            <div className="metric-value tabular-num">{totalCount}</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-header">
+              <Clock size={15} aria-hidden="true" />
+              <span>در حال دریافت</span>
+            </div>
+            <div className="metric-value tabular-num">{downloadingCount}</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-header">
+              <CheckCircle2 size={15} color="var(--color-success)" aria-hidden="true" />
+              <span>آماده پخش آفلاین</span>
+            </div>
+            <div className="metric-value tabular-num">{completedCount}</div>
+          </div>
+
+          <div className="metric-card">
+            <div className="metric-header">
+              <Database size={15} color="var(--color-accent)" aria-hidden="true" />
+              <span>حجم ذخیره‌شده</span>
+            </div>
+            <div className="metric-value tabular-num">{formatBytes(totalDownloadedBytes)}</div>
+          </div>
+        </div>
+      )}
+
+      {downloads.length > 0 && <div className="library-controls" style={{ marginBottom: 20 }}>
+        <input className="input-control" type="search" aria-label="جستجوی دانلودها" placeholder="جستجوی دوره یا درس دانلودشده…" value={query} onChange={event => setQuery(event.target.value)} />
+        <select aria-label="فیلتر وضعیت دانلود" value={status} onChange={event => setStatus(event.target.value)}>
+          <option value="all">همه دانلودها</option><option value="completed">آماده پخش</option><option value="downloading">در حال دریافت</option><option value="queued">در صف</option><option value="paused">متوقف‌شده</option><option value="failed">ناموفق</option>
+        </select>
+      </div>}
+      {downloads.length > 0 && visibleDownloads.length === 0 && <p role="status">دانلودی با این جستجو و فیلتر پیدا نشد.</p>}
       {loading && downloads.length === 0 ? (
         <div className="state-box">
-          <Loader2 size={36} className="spinning" color="var(--color-accent)" aria-hidden="true" />
+          <Loader2 size={32} className="spinning" color="var(--color-accent)" aria-hidden="true" />
           <div className="state-title">در حال بارگذاری فهرست دانلودها...</div>
         </div>
       ) : downloads.length === 0 ? (
         <div className="state-box">
           <Download className="state-icon" aria-hidden="true" />
           <div className="state-title">صف دانلود خالی است</div>
-          <p style={{ maxWidth: 420, fontSize: '0.88rem' }}>
+          <p style={{ maxWidth: 420, fontSize: '0.86rem' }}>
             هیچ درسی برای دانلود انتخاب نشده است. با ورود به هر دوره می‌توانید درس‌های مورد نظر خود را برای استفاده در حالت آفلاین ذخیره کنید.
           </p>
         </div>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
+        <div className="download-table-container">
           <table className="download-table" aria-label="فهرست دانلودها">
             <thead>
               <tr>
@@ -57,7 +125,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
               </tr>
             </thead>
             <tbody>
-              {downloads.map((item) => {
+              {visibleDownloads.map((item) => {
                 const isDownloading = item.status === 'downloading';
                 const isPaused = item.status === 'paused';
                 const isCompleted = item.status === 'completed';
@@ -73,15 +141,15 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                   <tr key={item.id}>
                     {/* Course & Lesson */}
                     <td style={{ minWidth: 220 }}>
-                      <div style={{ fontWeight: 600, fontSize: '0.92rem' }}>{item.lessonTitle}</div>
-                      <div style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)' }}>
+                      <div className="download-lesson-title">{item.lessonTitle}</div>
+                      <div className="download-course-title">
                         {item.courseTitle}
                       </div>
                     </td>
 
                     {/* Quality */}
                     <td>
-                      <span className="tabular-num" style={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                      <span className="tabular-num quality-pill">
                         {formatQualityLabel(undefined, item.quality)}
                       </span>
                     </td>
@@ -90,9 +158,8 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                     <td style={{ minWidth: 200 }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                         <span
+                          className="download-status-badge"
                           style={{
-                            fontSize: '0.8rem',
-                            fontWeight: 500,
                             color: isCompleted
                               ? 'var(--color-success)'
                               : isFailed
@@ -105,13 +172,13 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
                           {getDownloadStatusLabel(item.status)}
                         </span>
                         {percent !== null && isDownloading && (
-                          <span className="tabular-num" style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)' }}>
+                          <span className="tabular-num download-percent-text">
                             {percent}%
                           </span>
                         )}
                       </div>
 
-                      {/* Progress track if downloading or paused with partial progress */}
+                      {/* Progress track */}
                       {(isDownloading || isPaused) && (
                         <div className="progress-track">
                           <div
@@ -126,7 +193,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
 
                       {/* Error details if failed */}
                       {isFailed && item.error && (
-                        <div style={{ fontSize: '0.75rem', color: 'var(--color-danger)', marginTop: 4 }}>
+                        <div className="download-error-text">
                           {item.error}
                         </div>
                       )}
@@ -147,7 +214,7 @@ export const DownloadsView: React.FC<DownloadsViewProps> = ({
 
                     {/* Actions */}
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1)' }}>
+                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--space-1-5)' }}>
                         {/* Play Offline button for completed downloads */}
                         {isCompleted && (
                           <button

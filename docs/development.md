@@ -43,7 +43,7 @@ After `npm run build`, run the commands below from PowerShell. Use an extracted 
 
 ```powershell
 ./scripts/package-windows.ps1 -NodeRuntimeDirectory 'C:\path\to\node-win-x64' -OutputDirectory './build/desktop-preview'
-node scripts/smoke-desktop.mjs './build/desktop-preview/Maktabkhooneh-Study-Library-v1.1.0-win-x64-preview'
+node scripts/smoke-desktop.mjs './build/desktop-preview/Maktabkhooneh-Study-Library-v1.2.0-win-x64-preview'
 ```
 
 On Linux or macOS, use `sh scripts/package-unix.sh /path/to/extracted-node ./build/desktop-preview`. The runtime directory must include `bin/node` and `LICENSE` for your platform and architecture. Linux produces a Debian package. macOS produces a ZIP containing an unsigned `.app`. The CI packaging steps extract the resulting artifacts and exercise the bundled runtime. [Desktop preview instructions](desktop-preview.md)

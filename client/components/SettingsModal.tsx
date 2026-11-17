@@ -184,7 +184,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 value={preferredQuality}
                 onChange={(e) => setPreferredQuality(e.target.value as QualityPreference)}
               >
-                <option value="ask">پرسش هنگام پخش (انتخاب دستی)</option>
+                <option value="auto">خودکار (کیفیت پیش‌فرض)</option>
                 <option value="low">کم‌حجم و سریع (اولویت با حجم کمتر)</option>
                 <option value="high">کیفیت بالا و شفاف (اولویت با کیفیت برتر)</option>
               </select>

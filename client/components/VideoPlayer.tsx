@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Film, HardDrive, Wifi, AlertTriangle } from 'lucide-react';
-import type { Lesson, Course } from '@shared/types';
+import type { Lesson, Course, Quality } from '@shared/types';
+import { formatQualityLabel } from '../utils/format';
 import type { ProgressUpdate } from '../utils/studyProgress';
 import {
   Video,
@@ -12,14 +13,21 @@ import { I18nProvider } from '@videojs/react/i18n';
 import '@videojs/react/i18n/locales/fa/register';
 
 interface VideoPlayerProps {
+  panelRef?: React.Ref<HTMLDivElement>;
+  playbackStart?: number;
   course: Course;
   lesson: Lesson | null;
   videoSrc: string | null;
   isOfflineSource: boolean;
-  activeQuality?: string;
+  offlineQuality?: string;
+  preparing?: boolean;
+  qualities?: Quality[];
+  qualityId?: string;
+  onQualityChange?: (qualityId: string, position: number, paused: boolean) => void;
   errorMessage?: string | null;
   onError?: (message: string) => void;
   resumeSeconds?: number;
+  autoPlay?: boolean;
   defaultPlaybackRate?: number;
   onProgress?: (update: ProgressUpdate) => void;
 }
@@ -27,14 +35,21 @@ interface VideoPlayerProps {
 const SPEED_OPTIONS: number[] = [0.75, 1, 1.25, 1.5, 1.75, 2];
 
 export const VideoPlayer: React.FC<VideoPlayerProps> = ({
+  panelRef,
+  playbackStart = 0,
   course,
   lesson,
   videoSrc,
   isOfflineSource,
-  activeQuality,
+  offlineQuality,
+  preparing,
+  qualities,
+  qualityId,
+  onQualityChange,
   errorMessage,
   onError,
   resumeSeconds,
+  autoPlay = true,
   defaultPlaybackRate = 1,
   onProgress,
 }) => {
@@ -46,7 +61,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
   });
 
   // Track the source for which initial seek / speed setup has already occurred
-  const initializedSrcRef = useRef<string | null>(null);
+  const initializedVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Throttled timeupdate tracker (every 3s)
   const lastTimeUpdateRef = useRef<number>(0);
@@ -156,18 +171,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       if (!videoSrc || !lesson) return;
 
       // Ensure initialization runs once per mounted source
-      if (initializedSrcRef.current === videoSrc) return;
-      initializedSrcRef.current = videoSrc;
+      if (initializedVideoRef.current === video) return;
+      initializedVideoRef.current = video;
 
       // 1. Seek to saved time if valid
       if (
         typeof resumeSeconds === 'number' &&
         Number.isFinite(resumeSeconds) &&
         resumeSeconds > 0 &&
-        (!Number.isFinite(video.duration) || resumeSeconds < video.duration)
+        (!autoPlay || !Number.isFinite(video.duration) || resumeSeconds < video.duration)
       ) {
         try {
-          video.currentTime = resumeSeconds;
+          video.currentTime = Number.isFinite(video.duration) ? Math.min(resumeSeconds, video.duration) : resumeSeconds;
         } catch (err) {
           console.debug('Failed to seek to resumeSeconds:', err);
         }
@@ -182,6 +197,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       }
 
       // 3. Play with controls fallback
+      if (!autoPlay) return;
       const playPromise = video.play();
       if (playPromise !== undefined) {
         playPromise.catch((err: unknown) => {
@@ -189,7 +205,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         });
       }
     },
-    [videoSrc, lesson, resumeSeconds, playbackRate, defaultPlaybackRate]
+    [videoSrc, lesson, resumeSeconds, autoPlay, playbackRate, defaultPlaybackRate]
   );
 
   const initPlaybackRef = useRef(initPlayback);
@@ -248,7 +264,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
       window.removeEventListener('pagehide', flush);
       flush();
     };
-  }, [videoSrc, lesson?.id]);
+  }, [videoSrc, lesson?.id, playbackStart]);
 
   // Scoped keyboard shortcuts J / K / L on focusable player region
   const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -307,6 +323,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
   return (
     <div
+      ref={panelRef}
       className="player-panel"
       tabIndex={0}
       onKeyDown={handleKeyDown}
@@ -318,13 +335,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         {videoSrc ? (
           <I18nProvider locale="fa">
             <VideojsPlayer
-              key={videoSrc}
+              key={`${playbackStart}:${videoSrc}`}
               defaultPlaybackRates={SPEED_OPTIONS}
             >
               <NeutralVideoSkin className="study-video-skin">
                 <Video
                   ref={videoRef}
-                  key={videoSrc}
                   src={videoSrc}
                   data-lesson-id={lesson?.id}
                   data-src={videoSrc}
@@ -351,13 +367,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           <div className="player-placeholder">
             <Film size={48} strokeWidth={1.5} color="#9ca3af" aria-hidden="true" />
             <div className="placeholder-title" style={{ fontWeight: 600, fontSize: '1rem', color: '#f9fafb' }}>
-              {lesson ? 'کیفیت مورد نظر را برای پخش انتخاب کنید' : 'یک درس را برای مشاهده انتخاب کنید'}
+              {preparing ? 'در حال آماده‌سازی ویدیو…' : 'یک درس را برای مشاهده انتخاب کنید'}
             </div>
-            <p style={{ fontSize: '0.82rem', maxWidth: 360, color: '#9ca3af' }}>
-              {lesson
-                ? 'با کلیک روی دکمه «پخش» در ردیف درس، می‌توانید کیفیت استریم یا فایل آفلاین را انتخاب نمایید.'
-                : 'برای شروع پخش، از فهرست فصل‌ها در سمت چپ درس مورد نظرتان را انتخاب کنید.'}
-            </p>
+            {!preparing && <p style={{ fontSize: '0.82rem', maxWidth: 360, color: '#9ca3af' }}>
+              برای شروع پخش، یک درس را از فهرست فصل‌ها انتخاب کنید.
+            </p>}
           </div>
         )}
       </div>
@@ -461,10 +475,35 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-            {activeQuality && (
+            {offlineQuality && (
               <span className="lesson-badge-pill" style={{ backgroundColor: 'var(--color-surface-subtle)', border: '1px solid var(--color-border)' }}>
-                کیفیت: <span className="tabular-num">{activeQuality}</span>
+                کیفیت: <span className="tabular-num">{offlineQuality}</span>
               </span>
+            )}
+
+            {videoSrc && !isOfflineSource && qualities && qualities.length > 1 && (
+              <label className="player-quality">
+                <span>کیفیت پخش</span>
+                <select
+                  className="input-control"
+                  value={qualityId ?? ''}
+                  onChange={(event) => {
+                    const video = videoRef.current;
+                    if (video && video.readyState >= 1) {
+                      onQualityChange?.(event.target.value, video.currentTime, video.paused);
+                    } else {
+                      onQualityChange?.(event.target.value, resumeSeconds ?? 0, !autoPlay);
+                    }
+                  }}
+                >
+                  <option value="">خودکار</option>
+                  {qualities.map((quality) => (
+                    <option key={quality.id} value={quality.id}>
+                      {formatQualityLabel(quality.label, quality.id)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
 
             {isOfflineSource ? (

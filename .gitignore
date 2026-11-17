@@ -50,6 +50,9 @@ backup/
 Thumbs.db
 desktop.ini
 
+# Agent skills & workflows
+.agents/
+
 # Editor artifacts
 .idea/
 .vscode/*

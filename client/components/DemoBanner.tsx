@@ -12,7 +12,7 @@ export const DemoBanner: React.FC<DemoBannerProps> = ({ isDemo }) => {
     <div className="demo-banner" role="status" aria-live="polite">
       <AlertCircle size={18} aria-hidden="true" />
       <span>
-        <strong>حالت نمایشی فعال است:</strong> اطلاعات نمایش داده شده صرفاً نمونه‌های تستی هستند و اطلاعات واقعی حساب یا ویدیوهای دوره بارگیری نمی‌شوند.
+        <strong>نسخه نمایشی</strong> — دوره‌ها و ویدیوهای این صفحه نمونه‌اند؛ اطلاعات حساب واقعی استفاده نمی‌شود.
       </span>
     </div>
   );

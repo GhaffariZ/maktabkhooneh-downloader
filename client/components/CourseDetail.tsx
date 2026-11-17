@@ -18,8 +18,11 @@ import {
 } from 'lucide-react';
 import type { Course, Chapter, Lesson, Quality } from '@shared/types';
 import { VideoPlayer } from './VideoPlayer';
+import { StudyNotes } from './StudyNotes';
 import { QualitySelectorModal } from './QualitySelectorModal';
 import { formatDuration, formatQualityLabel } from '../utils/format';
+import { preferredPlaybackQuality } from '../utils/playbackQuality';
+import type { QualityPreference } from '../utils/studyPreferences';
 import { api } from '../api/client';
 import {
   lessonKey,
@@ -36,7 +39,17 @@ export interface InitialOfflinePlayback {
   quality: string;
 }
 
+interface LessonPlayback {
+  lesson: Lesson;
+  position?: number;
+  autoPlay: boolean;
+  qualityId?: string;
+  qualities: Quality[];
+  preparing: boolean;
+}
+
 export interface CourseDetailProps {
+  scope?: 'demo' | 'real';
   course: Course;
   chapters: Chapter[];
   loading: boolean;
@@ -47,11 +60,12 @@ export interface CourseDetailProps {
   progress?: ProgressTable;
   onProgress?: (courseId: string, lessonId: string, lessonTitle: string, update: ProgressUpdate) => void;
   initialResume?: LessonProgress | null;
-  preferredQuality?: 'ask' | 'low' | 'high';
+  preferredQuality?: QualityPreference;
   playbackRate?: number;
 }
 
 export const CourseDetail: React.FC<CourseDetailProps> = ({
+  scope = 'real',
   course,
   chapters,
   loading,
@@ -61,20 +75,19 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   progress,
   onProgress,
   initialResume,
-  preferredQuality,
+  preferredQuality = 'auto',
   playbackRate,
 }) => {
-  const [selectedLesson, setSelectedLesson] = useState<Lesson | null>(null);
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [isOfflineSource, setIsOfflineSource] = useState(false);
-  const [activeQuality, setActiveQuality] = useState<string | undefined>(undefined);
+  const [playback, setPlayback] = useState<LessonPlayback | null>(null);
+  const selectedLesson = playback?.lesson ?? null;
+  const download = selectedLesson?.download;
+  const offlineDownload = download?.status === 'completed' ? download : null;
+  const videoSrc = !selectedLesson || playback?.preparing ? null : offlineDownload
+    ? api.getLocalMediaUrl(offlineDownload.id)
+    : api.getStreamUrl(selectedLesson.id, course.id, playback?.qualityId);
+  const playerRef = useRef<HTMLDivElement>(null);
+  const [playbackStarts, setPlaybackStarts] = useState(0);
   const [collapsedChapters, setCollapsedChapters] = useState<Record<string, boolean>>({});
-
-  // Active playing lesson resume seconds passed to VideoPlayer
-  const [currentResumeSeconds, setCurrentResumeSeconds] = useState<number | undefined>(undefined);
-
-  // Modal-specific pending resume seconds; applied ONLY on explicit confirmation
-  const [modalResumeSeconds, setModalResumeSeconds] = useState<number | undefined>(undefined);
 
   // Focus mode & keyboard shortcuts hint state
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -86,7 +99,6 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
 
   // Quality modal state and request-id guard
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState<'play' | 'download'>('play');
   const [modalLesson, setModalLesson] = useState<Lesson | null>(null);
   const [modalQualities, setModalQualities] = useState<Quality[]>([]);
   const [modalLoading, setModalLoading] = useState(false);
@@ -101,6 +113,15 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   // Keep a stable ref to progress so effects consuming it once don't re-trigger on watch events
   const progressRef = useRef(progress);
   progressRef.current = progress;
+
+  useEffect(() => {
+    if (!playbackStarts) return;
+    const frame = requestAnimationFrame(() => {
+      playerRef.current?.focus({ preventScroll: true });
+      playerRef.current?.scrollIntoView({ block: 'start', inline: 'nearest', behavior: 'instant' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [playbackStarts]);
 
   useEffect(() => {
     return () => {
@@ -166,7 +187,38 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFocusMode, modalOpen]);
 
-  // Consume initial offline playback once per explicit ID/course without re-triggering on progress
+  const handlePlayLesson = async (lesson: Lesson, resumePosition?: number) => {
+    const saved = progressRef.current?.[lessonKey(course.id, lesson.id)];
+    const offline = lesson.download?.status === 'completed';
+    const next: LessonPlayback = {
+      lesson,
+      position: resumePosition ?? (saved?.completed ? undefined : saved?.position),
+      autoPlay: true,
+      qualities: [],
+      preparing: !offline && preferredQuality !== 'auto',
+    };
+    setPlayback(next);
+    setPlayerError(null);
+    setPlaybackStarts((count) => count + 1);
+    if (offline) return;
+
+    const result = await api.getLessonQualities(lesson.id, course.id).catch(() => null);
+    const qualities = result?.qualities ?? [];
+    setPlayback((current) => current === next ? {
+      ...current,
+      preparing: false,
+      qualities,
+      qualityId: preferredPlaybackQuality(qualities, preferredQuality),
+    } : current);
+  };
+
+  const handlePlaybackQualityChange = (qualityId: string, position: number, paused: boolean) => {
+    if (!playback || playback.qualityId === (qualityId || undefined)) return;
+    setPlayerError(null);
+    setPlayback({ ...playback, qualityId: qualityId || undefined, position, autoPlay: !paused });
+  };
+
+  // Consume initial offline playback once per explicit ID/course without re-triggering on progress.
   useEffect(() => {
     if (!initialPlayback) {
       return;
@@ -177,7 +229,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     }
     handledInitialPlaybackRef.current = playbackKey;
 
-    setSelectedLesson({
+    void handlePlayLesson({
       id: initialPlayback.lessonId,
       title: initialPlayback.lessonTitle,
       accessible: true,
@@ -192,19 +244,6 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
         downloadedBytes: 0,
       },
     });
-    setIsOfflineSource(true);
-    setActiveQuality(formatQualityLabel(undefined, initialPlayback.quality));
-    setVideoSrc(api.getLocalMediaUrl(initialPlayback.downloadId));
-    setPlayerError(null);
-
-    // Read saved progress once upon consuming initial playback
-    const savedKey = lessonKey(course.id, initialPlayback.lessonId);
-    const saved = progressRef.current?.[savedKey];
-    if (saved && saved.position > 0 && !saved.completed) {
-      setCurrentResumeSeconds(saved.position);
-    } else {
-      setCurrentResumeSeconds(undefined);
-    }
   }, [initialPlayback, course.id, course.title]);
 
   // Wire explicit initialResume: finds target in loaded outline FIRST, then marks handled
@@ -235,18 +274,7 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     // Target found and accessible/completed: mark handled NOW
     handledInitialResumeRef.current = resumeKey;
 
-    if (targetLesson.download?.status === 'completed') {
-      // Direct local playback if already downloaded
-      setSelectedLesson(targetLesson);
-      setIsOfflineSource(true);
-      setActiveQuality(formatQualityLabel(undefined, targetLesson.download.quality));
-      setVideoSrc(api.getLocalMediaUrl(targetLesson.download.id));
-      setCurrentResumeSeconds(initialResume.position);
-      setPlayerError(null);
-    } else {
-      // Offer quality selection for streaming; stores modal resume seconds separately
-      handleOpenQualityModal(targetLesson, 'play', initialResume.position);
-    }
+    void handlePlayLesson(targetLesson, initialResume.position);
   }, [initialResume, course.id, chapters]);
 
   const toggleChapter = (chapterId: string) => {
@@ -260,47 +288,11 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
     setModalQualities([]);
     setModalError(null);
     setModalLoading(false);
-    setModalResumeSeconds(undefined);
   };
 
-  // Open quality modal for play or download with request-id protection
-  const handleOpenQualityModal = async (
-    lesson: Lesson,
-    mode: 'play' | 'download',
-    resumePos?: number
-  ) => {
-    let pendingResume: number | undefined = undefined;
-    if (mode === 'play') {
-      const pos =
-        resumePos !== undefined
-          ? resumePos
-          : progressRef.current?.[lessonKey(course.id, lesson.id)]?.position;
-      const isCompl = progressRef.current?.[lessonKey(course.id, lesson.id)]?.completed;
-      if (pos && pos > 0 && !isCompl) {
-        pendingResume = pos;
-      } else if (resumePos !== undefined) {
-        pendingResume = resumePos;
-      }
-    }
-
-    // If play mode and already downloaded completed, play offline immediately without modal
-    if (mode === 'play' && lesson.download?.status === 'completed') {
-      setSelectedLesson(lesson);
-      setIsOfflineSource(true);
-      setActiveQuality(formatQualityLabel(undefined, lesson.download.quality));
-      setVideoSrc(api.getLocalMediaUrl(lesson.download.id));
-      setCurrentResumeSeconds(pendingResume);
-      setModalResumeSeconds(undefined);
-      setPlayerError(null);
-      return;
-    }
-
-    // Modal will open for quality selection: store pending resume seconds ONLY for the modal
-    setModalResumeSeconds(pendingResume);
-
+  const handleOpenDownloadQuality = async (lesson: Lesson) => {
     const requestId = ++qualityRequestIdRef.current;
     setModalLesson(lesson);
-    setModalMode(mode);
     setModalOpen(true);
     setModalLoading(true);
     setModalError(null);
@@ -326,30 +318,16 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   const handleConfirmQuality = async (qualityId: string) => {
     if (!modalLesson) return;
 
-    if (modalMode === 'play') {
-      const qObj = modalQualities.find((q) => q.id === qualityId);
-      const readableLabel = formatQualityLabel(qObj?.label, qualityId);
-      setSelectedLesson(modalLesson);
-      setIsOfflineSource(false);
-      setActiveQuality(readableLabel);
-      setVideoSrc(api.getStreamUrl(modalLesson.id, course.id, qualityId));
-      // Apply pending resume seconds to player ONLY upon explicit confirm
-      setCurrentResumeSeconds(modalResumeSeconds);
-      setModalResumeSeconds(undefined);
-      setPlayerError(null);
-      handleCloseQualityModal();
-    } else {
-      // Download mode: enqueue single lesson
-      try {
-        setModalLoading(true);
-        await onEnqueueDownload(course.id, modalLesson.id, qualityId);
-        handleCloseQualityModal();
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : 'خطا در افزودن به صف دانلود';
-        setModalError(msg);
-      } finally {
-        setModalLoading(false);
-      }
+    const requestId = qualityRequestIdRef.current;
+    setModalLoading(true);
+    try {
+      await onEnqueueDownload(course.id, modalLesson.id, qualityId);
+      if (requestId === qualityRequestIdRef.current) handleCloseQualityModal();
+    } catch (err: unknown) {
+      if (requestId !== qualityRequestIdRef.current) return;
+      const msg = err instanceof Error ? err.message : 'خطا در افزودن به صف دانلود';
+      setModalError(msg);
+      setModalLoading(false);
     }
   };
 
@@ -417,24 +395,37 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
   return (
     <div className={`course-detail-container ${isFocusMode ? 'focus-mode-container' : ''}`}>
       {/* Topbar navigation: hidden via CSS in focus mode */}
-      <div className="page-topbar" style={{ marginBottom: 'var(--space-4)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+      <div className="page-topbar detail-topbar">
+        <div className="detail-topbar-start">
           <button
             type="button"
-            className="btn btn-secondary btn-sm"
+            className="btn btn-secondary btn-sm back-nav-btn"
             onClick={onBack}
             aria-label="بازگشت به فهرست دوره‌ها"
           >
-            <ArrowRight size={16} aria-hidden="true" />
+            <ArrowRight size={15} aria-hidden="true" />
             <span>بازگشت به دوره‌ها</span>
           </button>
-          <h1 style={{ fontSize: '1.25rem', margin: 0 }}>{course.title}</h1>
-        </div>
-        {course.instructor && (
-          <div style={{ fontSize: '0.85rem', color: 'var(--color-text-secondary)' }}>
-            مدرس: {course.instructor}
+          <div>
+            <h1 className="detail-course-title">{course.title}</h1>
+            {course.instructor && (
+              <div className="detail-instructor-tag">
+                مدرس: {course.instructor}
+              </div>
+            )}
           </div>
-        )}
+        </div>
+
+        <div className="detail-topbar-end">
+          <span className="detail-meta-pill tabular-num">
+            {totalLessons} درس
+          </span>
+          {completionPercent > 0 && (
+            <span className="detail-meta-pill completion-pill tabular-num">
+              {completionPercent}٪ مشاهده شده
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="course-detail-layout">
@@ -502,17 +493,28 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
 
           {/* Native Video Player */}
           <VideoPlayer
+            panelRef={playerRef}
+            playbackStart={playbackStarts}
             course={course}
             lesson={selectedLesson}
             videoSrc={videoSrc}
-            isOfflineSource={isOfflineSource}
-            activeQuality={activeQuality}
+            isOfflineSource={!!offlineDownload}
+            offlineQuality={offlineDownload ? formatQualityLabel(undefined, offlineDownload.quality) : undefined}
+            preparing={playback?.preparing}
+            qualities={playback?.qualities}
+            qualityId={playback?.qualityId}
+            onQualityChange={handlePlaybackQualityChange}
             errorMessage={playerError}
             onError={setPlayerError}
-            resumeSeconds={currentResumeSeconds}
+            resumeSeconds={playback?.position}
+            autoPlay={playback?.autoPlay}
             defaultPlaybackRate={playbackRate}
             onProgress={handleVideoProgress}
           />
+          {selectedLesson && !isFocusMode && <StudyNotes
+            key={JSON.stringify([scope, course.id, selectedLesson.id])}
+            scope={scope} courseId={course.id} lessonId={selectedLesson.id} title={selectedLesson.title}
+          />}
         </div>
 
         {/* Chapters & Lessons Outline Sidebar */}
@@ -617,185 +619,185 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
               </button>
             </div>
           ) : (
-            filteredChapters.map((chapter) => {
-              const isCollapsed = !!collapsedChapters[chapter.id];
+            <div
+              className="chapter-scroll"
+              role="region"
+              aria-label="فهرست فصل‌ها و درس‌ها"
+              tabIndex={0}
+            >
+              {filteredChapters.map((chapter) => {
+                const isCollapsed = !!collapsedChapters[chapter.id];
 
-              return (
-                <div key={chapter.id} className="chapter-group">
-                  <button
-                    type="button"
-                    className="chapter-header clickable"
-                    onClick={() => toggleChapter(chapter.id)}
-                    style={{
-                      width: '100%',
-                      border: 'none',
-                      background: 'var(--color-surface-subtle)',
-                      textAlign: 'right',
-                      color: 'var(--color-text-primary)',
-                    }}
-                    aria-expanded={!isCollapsed}
-                  >
-                    <span style={{ color: 'var(--color-text-primary)' }}>{chapter.title}</span>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
-                      <span className="tabular-num" style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
-                        {chapter.lessons.length} درس
-                      </span>
-                      {isCollapsed ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
-                    </div>
-                  </button>
+                return (
+                  <div key={chapter.id} className="chapter-group">
+                    <button
+                      type="button"
+                      className="chapter-header clickable"
+                      onClick={() => toggleChapter(chapter.id)}
+                      style={{
+                        width: '100%',
+                        border: 'none',
+                        background: 'var(--color-surface-subtle)',
+                        textAlign: 'right',
+                        color: 'var(--color-text-primary)',
+                      }}
+                      aria-expanded={!isCollapsed}
+                    >
+                      <span style={{ color: 'var(--color-text-primary)' }}>{chapter.title}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-2)' }}>
+                        <span className="tabular-num" style={{ fontSize: '0.78rem', color: 'var(--color-text-muted)', fontWeight: 400 }}>
+                          {chapter.lessons.length} درس
+                        </span>
+                        {isCollapsed ? <ChevronDown size={16} aria-hidden="true" /> : <ChevronUp size={16} aria-hidden="true" />}
+                      </div>
+                    </button>
 
-                  {!isCollapsed && (
-                    <div className="lesson-list">
-                      {chapter.lessons.map((lesson) => {
-                        const isSelected = selectedLesson?.id === lesson.id;
-                        const isOffline = lesson.download?.status === 'completed';
-                        const isDownloading =
-                          lesson.download?.status === 'downloading' ||
-                          lesson.download?.status === 'queued';
+                    {!isCollapsed && (
+                      <div className="lesson-list">
+                        {chapter.lessons.map((lesson) => {
+                          const isSelected = selectedLesson?.id === lesson.id;
+                          const isOffline = lesson.download?.status === 'completed';
+                          const isDownloading =
+                            lesson.download?.status === 'downloading' ||
+                            lesson.download?.status === 'queued';
 
-                        // Study progress state for this lesson
-                        const pKey = lessonKey(course.id, lesson.id);
-                        const progressRecord = progress ? progress[pKey] : undefined;
-                        const isWatched = progressRecord?.completed ?? false;
-                        const positionSeconds = progressRecord?.position ?? 0;
+                          // Study progress state for this lesson
+                          const pKey = lessonKey(course.id, lesson.id);
+                          const progressRecord = progress ? progress[pKey] : undefined;
+                          const isWatched = progressRecord?.completed ?? false;
+                          const positionSeconds = progressRecord?.position ?? 0;
 
-                        return (
-                          <div
-                            key={lesson.id}
-                            className={`lesson-item ${isSelected ? 'selected' : ''} ${!lesson.accessible ? 'inaccessible' : ''}`}
-                          >
-                            {/* Manual Watched Toggle */}
-                            <button
-                              type="button"
-                              className={`btn-toggle-watched ${isWatched ? 'is-completed' : ''}`}
-                              onClick={(e) => handleToggleWatched(lesson, e)}
-                              title={
-                                isWatched
-                                  ? 'علامت‌گذاری به عنوان مشاهده نشده'
-                                  : 'علامت‌گذاری به عنوان مشاهده شده'
-                              }
-                              aria-label={
-                                isWatched
-                                  ? `علامت‌گذاری درس ${lesson.title} به عنوان مشاهده نشده`
-                                  : `علامت‌گذاری درس ${lesson.title} به عنوان مشاهده شده`
-                              }
+                          return (
+                            <div
+                              key={lesson.id}
+                              className={`lesson-item ${isSelected ? 'selected' : ''} ${!lesson.accessible ? 'inaccessible' : ''}`}
                             >
-                              <CheckCircle2 size={16} aria-hidden="true" />
-                            </button>
+                              {/* Manual Watched Toggle */}
+                              <button
+                                type="button"
+                                className={`btn-toggle-watched ${isWatched ? 'is-completed' : ''}`}
+                                onClick={(e) => handleToggleWatched(lesson, e)}
+                                title={
+                                  isWatched
+                                    ? 'علامت‌گذاری به عنوان مشاهده نشده'
+                                    : 'علامت‌گذاری به عنوان مشاهده شده'
+                                }
+                                aria-label={
+                                  isWatched
+                                    ? `علامت‌گذاری درس ${lesson.title} به عنوان مشاهده نشده`
+                                    : `علامت‌گذاری درس ${lesson.title} به عنوان مشاهده شده`
+                                }
+                              >
+                                <CheckCircle2 size={16} aria-hidden="true" />
+                              </button>
 
-                            <div className="lesson-title-col">
-                              <span className="lesson-title-text" title={lesson.title}>
-                                {lesson.title}
-                              </span>
-                              <div className="lesson-meta-text">
-                                {lesson.duration ? (
-                                  <span>
-                                    <Clock size={12} style={{ display: 'inline', marginInlineEnd: 2 }} aria-hidden="true" />
-                                    <span className="tabular-num">{formatDuration(lesson.duration)}</span>
-                                  </span>
-                                ) : null}
+                              <div className="lesson-title-col">
+                                <span className="lesson-title-text" title={lesson.title}>
+                                  {lesson.title}
+                                </span>
+                                <div className="lesson-meta-text">
+                                  {lesson.duration ? (
+                                    <span>
+                                      <Clock size={12} style={{ display: 'inline', marginInlineEnd: 2 }} aria-hidden="true" />
+                                      <span className="tabular-num">{formatDuration(lesson.duration)}</span>
+                                    </span>
+                                  ) : null}
 
-                                {/* Distinct Offline Indicator */}
-                                {isOffline && (
-                                  <span className="lesson-badge-pill badge-offline">
-                                    <HardDrive size={12} aria-hidden="true" />
-                                    <span>آفلاین</span>
-                                  </span>
-                                )}
+                                  {/* Distinct Offline Indicator */}
+                                  {isOffline && (
+                                    <span className="lesson-badge-pill badge-offline">
+                                      <HardDrive size={12} aria-hidden="true" />
+                                      <span>آفلاین</span>
+                                    </span>
+                                  )}
 
-                                {/* Distinct Watched Indicator */}
-                                {isWatched && (
-                                  <span className="lesson-badge-pill badge-watched">
-                                    <CheckCircle2 size={12} aria-hidden="true" />
-                                    <span>مشاهده شده</span>
-                                  </span>
-                                )}
+                                  {/* Distinct Watched Indicator */}
+                                  {isWatched && (
+                                    <span className="lesson-badge-pill badge-watched">
+                                      <CheckCircle2 size={12} aria-hidden="true" />
+                                      <span>مشاهده شده</span>
+                                    </span>
+                                  )}
 
-                                {/* Distinct Resume Position Indicator */}
-                                {!isWatched && positionSeconds > 5 && (
-                                  <span
-                                    className="lesson-badge-pill badge-resumable"
-                                    title={`موقعیت ذخیره شده: ${formatDuration(Math.floor(positionSeconds))}`}
-                                  >
-                                    <span>تا {formatDuration(Math.floor(positionSeconds))}</span>
-                                  </span>
-                                )}
+                                  {/* Distinct Resume Position Indicator */}
+                                  {!isWatched && positionSeconds > 5 && (
+                                    <span
+                                      className="lesson-badge-pill badge-resumable"
+                                      title={`موقعیت ذخیره شده: ${formatDuration(Math.floor(positionSeconds))}`}
+                                    >
+                                      <span>تا {formatDuration(Math.floor(positionSeconds))}</span>
+                                    </span>
+                                  )}
 
-                                {isDownloading && (
-                                  <span className="lesson-badge-pill badge-downloading">
-                                    <span>{lesson.download?.status === 'downloading' ? 'در حال دانلود' : 'در صف'}</span>
-                                  </span>
-                                )}
+                                  {isDownloading && (
+                                    <span className="lesson-badge-pill badge-downloading">
+                                      <span>{lesson.download?.status === 'downloading' ? 'در حال دانلود' : 'در صف'}</span>
+                                    </span>
+                                  )}
 
-                                {!lesson.accessible && (
-                                  <span className="lesson-badge-pill badge-inaccessible">
-                                    <Lock size={12} aria-hidden="true" />
-                                    <span>غیرقابل دسترس</span>
-                                  </span>
-                                )}
+                                  {!lesson.accessible && (
+                                    <span className="lesson-badge-pill badge-inaccessible">
+                                      <Lock size={12} aria-hidden="true" />
+                                      <span>غیرقابل دسترس</span>
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              <div className="lesson-actions">
+                                {/* DISTINCT Play Button with Resume Labeling */}
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm btn-icon"
+                                  disabled={!lesson.accessible && !isOffline}
+                                  onClick={() => void handlePlayLesson(lesson)}
+                                  title={
+                                    isOffline
+                                      ? 'پخش آفلاین'
+                                      : !isWatched && positionSeconds > 5
+                                      ? `ادامه از ${formatDuration(Math.floor(positionSeconds))}`
+                                      : 'پخش آنلاین'
+                                  }
+                                  aria-label={`پخش درس ${lesson.title}`}
+                                >
+                                  {isOffline ? (
+                                    <HardDrive size={14} color="var(--color-success)" aria-hidden="true" />
+                                  ) : (
+                                    <Play size={14} color="var(--color-accent)" aria-hidden="true" />
+                                  )}
+                                </button>
+
+                                {/* DISTINCT Download Button */}
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost btn-sm btn-icon"
+                                  disabled={!lesson.accessible || isOffline || isDownloading}
+                                  onClick={() => void handleOpenDownloadQuality(lesson)}
+                                  title={
+                                    isOffline
+                                      ? 'دانلود شده است'
+                                      : isDownloading
+                                      ? 'در حال دانلود است'
+                                      : 'دانلود تکی این درس'
+                                  }
+                                  aria-label={`دانلود درس ${lesson.title}`}
+                                >
+                                  {isOffline ? (
+                                    <CheckCircle2 size={16} color="var(--color-success)" aria-hidden="true" />
+                                  ) : (
+                                    <Download size={16} aria-hidden="true" />
+                                  )}
+                                </button>
                               </div>
                             </div>
-
-                            <div className="lesson-actions">
-                              {/* DISTINCT Play Button with Resume Labeling */}
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm"
-                                disabled={!lesson.accessible && !isOffline}
-                                onClick={() => handleOpenQualityModal(lesson, 'play')}
-                                title={
-                                  isOffline
-                                    ? 'پخش آفلاین'
-                                    : !isWatched && positionSeconds > 5
-                                    ? `ادامه از ${formatDuration(Math.floor(positionSeconds))}`
-                                    : 'پخش آنلاین'
-                                }
-                                aria-label={`پخش درس ${lesson.title}`}
-                              >
-                                {isOffline ? (
-                                  <HardDrive size={14} color="var(--color-success)" aria-hidden="true" />
-                                ) : (
-                                  <Play size={14} color="var(--color-accent)" aria-hidden="true" />
-                                )}
-                                <span>
-                                  {isOffline
-                                    ? 'پخش'
-                                    : !isWatched && positionSeconds > 5
-                                    ? 'ادامه'
-                                    : 'پخش'}
-                                </span>
-                              </button>
-
-                              {/* DISTINCT Download Button */}
-                              <button
-                                type="button"
-                                className="btn btn-ghost btn-sm btn-icon"
-                                disabled={!lesson.accessible || isOffline || isDownloading}
-                                onClick={() => handleOpenQualityModal(lesson, 'download')}
-                                title={
-                                  isOffline
-                                    ? 'دانلود شده است'
-                                    : isDownloading
-                                    ? 'در حال دانلود است'
-                                    : 'دانلود تکی این درس'
-                                }
-                                aria-label={`دانلود درس ${lesson.title}`}
-                              >
-                                {isOffline ? (
-                                  <CheckCircle2 size={16} color="var(--color-success)" aria-hidden="true" />
-                                ) : (
-                                  <Download size={16} aria-hidden="true" />
-                                )}
-                              </button>
-                            </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                      </div>
+                    )}
                     </div>
-                  )}
-                </div>
-              );
-            })
+                );
+              })}
+            </div>
           )}
         </div>
       </div>
@@ -803,15 +805,14 @@ export const CourseDetail: React.FC<CourseDetailProps> = ({
       {/* Quality Picker Modal */}
       {modalLesson && (
         <QualitySelectorModal
+          key={modalLesson.id}
           isOpen={modalOpen}
           onClose={handleCloseQualityModal}
           lesson={modalLesson}
-          mode={modalMode}
           qualities={modalQualities}
           loading={modalLoading}
           error={modalError}
           onConfirm={handleConfirmQuality}
-          preferredQuality={preferredQuality}
         />
       )}
     </div>

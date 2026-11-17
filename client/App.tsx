@@ -350,7 +350,7 @@ export const App: React.FC = () => {
       <Navbar
         currentTab={currentTab}
         onSelectTab={(tab) => {
-          if (tab !== currentTab) {
+          if (tab !== currentTab || selectedCourse) {
             handleBackToCourses();
             setCurrentTab(tab);
           }
@@ -395,6 +395,7 @@ export const App: React.FC = () => {
           />
         ) : selectedCourse ? (
           <CourseDetail
+            scope={session.demo ? 'demo' : 'real'}
             course={selectedCourse}
             chapters={courseChapters}
             loading={detailLoading}
@@ -409,6 +410,8 @@ export const App: React.FC = () => {
           />
         ) : (
           <CourseLibrary
+            key={progressScope}
+            scope={session.demo ? 'demo' : 'real'}
             courses={courses}
             loading={coursesLoading}
             warning={session.demo ? undefined : courseWarning}
